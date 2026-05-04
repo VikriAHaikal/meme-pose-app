@@ -18,7 +18,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎭 Meme AI Pose Pro")
+st.title("Pose Camera Detection")
 
 # --- 2. KONFIGURASI ASSETS ---
 ASSETS_PATH = "assets"
