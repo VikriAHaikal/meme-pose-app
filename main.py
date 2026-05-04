@@ -1,92 +1,131 @@
-import mediapipe as mp
 import cv2
 import numpy as np
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import os
+import mediapipe as mp
 
-# --- 1. AUTO-CHECK ASSETS (Biar nggak tebak-tebak buah manggis) ---
-st.set_page_config(page_title="Meme AI Debugger", layout="centered")
-st.title("🎭 Meme AI Pose - Final Check")
+# --- 1. SETTING HALAMAN & MOBILE CSS ---
+st.set_page_config(page_title="Meme AI Pro", layout="centered")
 
-ASSETS_PATH = "assets/"
-files_to_check = {
+# Inject CSS agar video responsif di layar HP
+st.markdown("""
+    <style>
+    .element-container img, .stVideo {
+        width: 100% !important;
+        height: auto !important;
+        border-radius: 10px;
+    }
+    canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🎭 Meme AI Pose Mobile")
+
+# --- 2. KONFIGURASI ASSETS ---
+ASSETS_PATH = "assets"
+MEME_FILES = {
     "pointing": "monkey_pointing.png",
     "thinking": "monkey_thinking.png",
     "surprised": "monkey_surprised.png",
-    "wink": "monkey_wink.png",
-    "video": "prabowo_video.mp4"
+    "wink": "monkey_wink.png"
 }
+VIDEO_FILE = "prabowo_video.mp4"
 
-available_memes = {}
-st.sidebar.header("📁 Status Assets")
+# Fungsi muat assets dengan proteksi error
+def load_assets():
+    loaded = {}
+    for key, name in MEME_FILES.items():
+        p = os.path.join(ASSETS_PATH, name)
+        if os.path.exists(p):
+            img = cv2.imread(p)
+            if img is not None:
+                loaded[key] = img
+    return loaded
 
-for key, name in files_to_check.items():
-    full_path = os.path.join(ASSETS_PATH, name)
-    if os.path.exists(full_path):
-        st.sidebar.success(f"✅ {name} ditemukan")
-        if key != "video":
-            available_memes[key] = cv2.imread(full_path)
-    else:
-        st.sidebar.error(f"❌ {name} TIDAK ADA")
+AVAILABLE_MEMES = load_assets()
+VIDEO_PATH = os.path.join(ASSETS_PATH, VIDEO_FILE)
 
-# --- 2. LOGIKA DETEKSI (SUPER RINGAN) ---
+# --- 3. LOGIKA AI (MEDIAPIPE) ---
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 
-
-class MemeProcessor(VideoProcessorBase):
+class MobileMemeProcessor(VideoProcessorBase):
     def __init__(self):
-        video_path = os.path.join(ASSETS_PATH, files_to_check["video"])
-        self.video_cap = cv2.VideoCapture(
-            video_path) if os.path.exists(video_path) else None
+        self.video_cap = cv2.VideoCapture(VIDEO_PATH) if os.path.exists(VIDEO_PATH) else None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
-        h, w, c = img.shape
-
-        # Deteksi Tangan Saja (Biar nggak berat di HP)
+        
+        # Resizing Input agar ringan di HP (360p)
+        h, w = img.shape[:2]
+        target_w = 480
+        target_h = int(h * (target_w / w))
+        img = cv2.resize(img, (target_w, target_h))
+        
+        # Proses AI
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         res_hands = hands_detector.process(rgb)
 
         pose = None
         if res_hands.multi_hand_landmarks:
             hlm = res_hands.multi_hand_landmarks[0].landmark
-            # Pointing
-            if hlm[8].y < hlm[6].y:
+            # Deteksi Pointing
+            if hlm[8].y < hlm[6].y: 
                 pose = "pointing"
-            # Fist (Prabowo)
-            if all(hlm[i].y > hlm[i-2].y for i in [8, 12, 16, 20]):
+            # Deteksi Fist (Prabowo)
+            if all(hlm[i].y > hlm[i-2].y for i in [8, 12, 16, 20]) and hlm[0].y < 0.5:
                 pose = "video"
 
         # Gabungkan Atas (Kamera) & Bawah (Meme)
-        canvas = np.zeros((h * 2, w, 3), dtype=np.uint8)
-        canvas[0:h, 0:w] = img
-
-        meme_area = np.zeros((h, w, 3), dtype=np.uint8)
+        # Ukuran kanvas jadi 480 x (target_h * 2)
+        canvas = np.zeros((target_h * 2, target_w, 3), dtype=np.uint8)
+        canvas[0:target_h, 0:target_w] = img
+        
+        meme_area = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+        
         if pose == "video" and self.video_cap:
             ret, v_f = self.video_cap.read()
             if not ret:
                 self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 ret, v_f = self.video_cap.read()
-            if ret:
-                meme_area = cv2.resize(v_f, (w, h))
-        elif pose in available_memes:
-            meme_area = cv2.resize(available_memes[pose], (w, h))
+            if ret: 
+                meme_area = cv2.resize(v_f, (target_w, target_h))
+        elif pose in AVAILABLE_MEMES:
+            meme_area = cv2.resize(AVAILABLE_MEMES[pose], (target_w, target_h))
 
-        canvas[h:h*2, 0:w] = meme_area
+        canvas[target_h:target_h*2, 0:target_w] = meme_area
         return frame.from_ndarray(canvas, format="bgr24")
 
+# --- 4. RUNNER ---
+st.info("💡 Tips: Gunakan mode Portrait. Klik START dan tunggu lampu kamera menyala.")
 
-# --- 3. JALANKAN WEBRTC ---
 webrtc_streamer(
-    key="meme-final-v2",
+    key="mobile-meme-final",
     mode=WebRtcMode.SENDRECV,
-    video_processor_factory=MemeProcessor,
+    video_processor_factory=MobileMemeProcessor,
+    # Ice Servers Google agar tembus blokir jaringan HP
     rtc_configuration={
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]}
+        ]
     },
-    media_stream_constraints={"video": True, "audio": False},
+    # Resolusi rendah agar stabil di 4G/5G
+    media_stream_constraints={
+        "video": {
+            "width": {"ideal": 480},
+            "height": {"ideal": 360},
+            "frameRate": {"ideal": 15}
+        },
+        "audio": False
+    },
     async_processing=True,
 )
+
+if not AVAILABLE_MEMES:
+    st.warning("⚠️ Folder 'assets' belum lengkap atau nama file salah di GitHub.")
