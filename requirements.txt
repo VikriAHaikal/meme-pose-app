@@ -1,6 +1,5 @@
-tornado
-streamlit==1.32.2
-streamlit-webrtc==0.47.1
+streamlit
+streamlit-webrtc
 mediapipe==0.10.11
 opencv-python-headless
 numpy<2.0.0
