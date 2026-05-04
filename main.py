@@ -6,7 +6,7 @@ import os
 import mediapipe as mp
 
 # --- 1. SETTING UI MOBILE FIRST ---
-st.set_page_config(page_title="Meme AI Pro", layout="centered")
+st.set_page_config(page_title="Pose Camera Detection", layout="centered")
 
 st.markdown("""
     <style>
