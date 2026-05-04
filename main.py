@@ -6,14 +6,14 @@ import os
 import mediapipe as mp
 
 # --- 1. UI MOBILE-OPTIMIZED ---
-st.set_page_config(page_title="Meme AI Pro", layout="centered")
+st.set_page_config(page_title="Pose Camera Detection", layout="centered")
 st.markdown("""
     <style>
     .stVideo, video { width: 100% !important; border-radius: 15px; border: 2px solid #ff4b4b; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎭 Meme AI Pose Pro")
+st.title("Pose Camera Detection")
 
 # --- 2. KONFIGURASI ASSETS (Check & Load) ---
 ASSETS_PATH = "assets"
