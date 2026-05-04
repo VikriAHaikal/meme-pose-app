@@ -143,7 +143,7 @@ class MobileProcessor(VideoProcessorBase):
 
 
 # --- 4. RUNNER ---
-st.info("💡 **Pose**: Tunjuk jari, Tangan di dagu (Mikir), Kedip, Kaget (Mangap), atau Kepal tangan.")
+st.info("💡 **Pose**: Tunjuk jari ke atas, Tangan di dagu (Mikir), Kedip satu mata, Kaget (Mangap), atau Kepal tangan.")
 
 webrtc_streamer(
     key="mobile-final-pro",
