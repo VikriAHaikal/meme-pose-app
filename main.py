@@ -5,25 +5,32 @@ from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import os
 import mediapipe as mp
 
-# --- 1. SETTING HALAMAN & MOBILE CSS ---
-st.set_page_config(page_title="Meme AI Pro", layout="centered")
+# --- 1. SETTING MOBILE UI & CSS ---
+st.set_page_config(page_title="Meme AI Mobile", layout="centered")
 
-# Inject CSS agar video responsif di layar HP
+# CSS untuk memastikan video memenuhi lebar HP tapi tidak melebihi tinggi layar
 st.markdown("""
     <style>
-    .element-container img, .stVideo {
-        width: 100% !important;
-        height: auto !important;
-        border-radius: 10px;
+    .main {
+        background-color: #0e1117;
     }
-    canvas {
-        max-width: 100% !important;
-        height: auto !important;
+    div[data-testid="stVerticalBlock"] > div:has(div.stVideo) {
+        text-align: center;
+    }
+    .stVideo, video {
+        width: 100% !important;
+        max-height: 70vh !important; /* Batasi tinggi video agar muat di layar HP */
+        border-radius: 15px;
+        border: 2px solid #ff4b4b;
+    }
+    .stAlert {
+        padding: 0.5rem !important;
+        font-size: 14px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎭 Meme AI Pose Mobile")
+st.title("🎭 Meme AI Pose Pro")
 
 # --- 2. KONFIGURASI ASSETS ---
 ASSETS_PATH = "assets"
@@ -35,8 +42,8 @@ MEME_FILES = {
 }
 VIDEO_FILE = "prabowo_video.mp4"
 
-# Fungsi muat assets dengan proteksi error
-def load_assets():
+
+def load_memes():
     loaded = {}
     for key, name in MEME_FILES.items():
         p = os.path.join(ASSETS_PATH, name)
@@ -46,27 +53,25 @@ def load_assets():
                 loaded[key] = img
     return loaded
 
-AVAILABLE_MEMES = load_assets()
+
+AVAILABLE_MEMES = load_memes()
 VIDEO_PATH = os.path.join(ASSETS_PATH, VIDEO_FILE)
 
 # --- 3. LOGIKA AI (MEDIAPIPE) ---
 mp_hands = mp.solutions.hands
 hands_detector = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 
-class MobileMemeProcessor(VideoProcessorBase):
+
+class MobileOverlayProcessor(VideoProcessorBase):
     def __init__(self):
-        self.video_cap = cv2.VideoCapture(VIDEO_PATH) if os.path.exists(VIDEO_PATH) else None
+        self.video_cap = cv2.VideoCapture(
+            VIDEO_PATH) if os.path.exists(VIDEO_PATH) else None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        img = cv2.flip(img, 1)
-        
-        # Resizing Input agar ringan di HP (360p)
-        h, w = img.shape[:2]
-        target_w = 480
-        target_h = int(h * (target_w / w))
-        img = cv2.resize(img, (target_w, target_h))
-        
+        img = cv2.flip(img, 1)  # Mirror agar natural bagi pengguna
+        h, w, _ = img.shape
+
         # Proses AI
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         res_hands = hands_detector.process(rgb)
@@ -74,58 +79,72 @@ class MobileMemeProcessor(VideoProcessorBase):
         pose = None
         if res_hands.multi_hand_landmarks:
             hlm = res_hands.multi_hand_landmarks[0].landmark
-            # Deteksi Pointing
-            if hlm[8].y < hlm[6].y: 
+            # Pointing
+            if hlm[8].y < hlm[6].y:
                 pose = "pointing"
-            # Deteksi Fist (Prabowo)
+            # Fist (Prabowo)
             if all(hlm[i].y > hlm[i-2].y for i in [8, 12, 16, 20]) and hlm[0].y < 0.5:
                 pose = "video"
 
-        # Gabungkan Atas (Kamera) & Bawah (Meme)
-        # Ukuran kanvas jadi 480 x (target_h * 2)
-        canvas = np.zeros((target_h * 2, target_w, 3), dtype=np.uint8)
-        canvas[0:target_h, 0:target_w] = img
-        
-        meme_area = np.zeros((target_h, target_w, 3), dtype=np.uint8)
-        
+        # --- LOGIKA OVERLAY (PIP) ---
+        # Ukuran Overlay Meme (25% dari lebar video)
+        pip_w = int(w * 0.35)
+        pip_h = int(h * 0.35)
+
+        meme_img = None
         if pose == "video" and self.video_cap:
             ret, v_f = self.video_cap.read()
             if not ret:
                 self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 ret, v_f = self.video_cap.read()
-            if ret: 
-                meme_area = cv2.resize(v_f, (target_w, target_h))
+            if ret:
+                meme_img = v_f
         elif pose in AVAILABLE_MEMES:
-            meme_area = cv2.resize(AVAILABLE_MEMES[pose], (target_w, target_h))
+            meme_img = AVAILABLE_MEMES[pose]
 
-        canvas[target_h:target_h*2, 0:target_w] = meme_area
-        return frame.from_ndarray(canvas, format="bgr24")
+        if meme_img is not None:
+            meme_res = cv2.resize(meme_img, (pip_w, pip_h))
+            # Tempel di pojok kanan bawah dengan sedikit margin
+            margin = 10
+            overlay = img.copy()
+            # Buat background putih sedikit transparan di belakang meme (Border effect)
+            cv2.rectangle(img, (w-pip_w-margin-2, h-pip_h-margin-2),
+                          (w-margin+2, h-margin+2), (255, 255, 255), -1)
+            img[h-pip_h-margin:h-margin, w-pip_w-margin:w-margin] = meme_res
 
-# --- 4. RUNNER ---
-st.info("💡 Tips: Gunakan mode Portrait. Klik START dan tunggu lampu kamera menyala.")
+            # Tambahkan teks label pose
+            label = "PRABOWO MODE" if pose == "video" else f"POSE: {pose.upper()}"
+            cv2.putText(img, label, (w-pip_w-margin, h-pip_h-margin-15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        return frame.from_ndarray(img, format="bgr24")
+
+
+# --- 4. TAMPILAN UTAMA ---
+st.info("📱 **Mode Mobile**: Pastikan wajah dan tangan terlihat di kamera.")
 
 webrtc_streamer(
-    key="mobile-meme-final",
+    key="mobile-overlay",
     mode=WebRtcMode.SENDRECV,
-    video_processor_factory=MobileMemeProcessor,
-    # Ice Servers Google agar tembus blokir jaringan HP
+    video_processor_factory=MobileOverlayProcessor,
     rtc_configuration={
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]}
-        ]
+        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
     },
-    # Resolusi rendah agar stabil di 4G/5G
     media_stream_constraints={
         "video": {
-            "width": {"ideal": 480},
-            "height": {"ideal": 360},
-            "frameRate": {"ideal": 15}
+            "facingMode": "user",  # Paksa pakai kamera depan
+            "width": {"ideal": 640},
+            "height": {"ideal": 480}
         },
         "audio": False
     },
     async_processing=True,
 )
 
-if not AVAILABLE_MEMES:
-    st.warning("⚠️ Folder 'assets' belum lengkap atau nama file salah di GitHub.")
+# Sidebar untuk panduan agar tidak memenuhi layar utama HP
+with st.sidebar:
+    st.subheader("📸 Panduan Pose")
+    st.write("- **Tunjuk Jari**: Muncul monyet menunjuk.")
+    st.write("- **Kepal Tangan**: Muncul video Pak Prabowo.")
+    if not AVAILABLE_MEMES:
+        st.error("⚠️ File meme di folder 'assets' belum lengkap!")
