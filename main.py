@@ -12,7 +12,7 @@ st.title("🎭 Meme AI Pose - Final Check")
 ASSETS_PATH = "assets/"
 files_to_check = {
     "pointing": "monkey_pointing.png",
-    "thinking": "monkey_thinking.jpg",
+    "thinking": "monkey_thinking.png",
     "surprised": "monkey_surprised.png",
     "wink": "monkey_wink.png",
     "video": "prabowo_video.mp4"
